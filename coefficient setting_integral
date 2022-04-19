@@ -1,0 +1,57 @@
+% cprop=7,cint=(0.2:8),cdiff=0
+cint=0;
+cprop=7;
+cdiff=0;
+step=0.001;
+f0=60;
+m=1.5;
+q=2.0;
+xref=20;
+t(1)=0;
+t(2)=step;
+V(1)=0;
+V(2)=0;
+F(1)=0;
+for j=1:40
+    sum=0;
+    X(j,1)=80;
+    X(j,2)=80;
+    cint=j*0.2;
+for i=3:20000
+    t(i)=step*(i-1);
+    sum=sum+(X(j,i-1)-xref)*step;
+    F(i-1)=cint*sum+cprop*(X(j,i-1)-xref)+cdiff*(X(j,i-1)-X(j,i-2))/step;
+    F(i-1)=min(F(i-1),250);
+    F(i-1)=max(F(i-1),-250);
+    V(i-1)=((F(i-1)-f0)*step+m*V(i-2))/(m+q*step);
+    X(j,i)=X(j,i-1)-V(i-1)*step;
+end
+i=1;
+    while X(j,i)>=26
+        i=i+1;
+        if i==20000
+            break;
+        end
+    end
+    Trise(j)=t(i);  
+    
+ os(j) = 30;
+    for i=1:20000
+       os(j) = min(os(j),X(j,i));
+    end
+    if os(j)<20
+       overshoot(j)=(20-os(j))/60;
+    else
+       overshoot(j)=0;
+    end
+ 
+    kik(j)=0.2*j;
+ 
+end
+%subplot(3,1,1),plot(t,X);
+%subplot(3,1,2),plot(kik,Trise);
+%subplot(3,1,3),plot(kik,overshoot);
+ for j=1:40
+kii(1,j)=j*0.2;
+end
+ mesh(t,kii,X);
