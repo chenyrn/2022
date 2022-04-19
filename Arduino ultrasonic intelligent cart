@@ -1,0 +1,247 @@
+/*autodrive.c          */
+#include <Servo.h>
+#include <LiquidCrystal_I2C.h>
+#include <Wire.h>
+Servo myservo;
+
+int Left_digital=4;     //左电机正极
+int Left_analog=6;     //左电机负极
+
+int Right_digital=7;    // 右电机正极
+int Right_analog=5;    // 右电机正极
+
+int Ultrasonic_Echo = A3;  // Echo回声脚
+int Ultrasonic_Trig =A2;  //  Trig 超声波触发脚
+
+const int SensorFR = 8 ;   	//右感測器輸入腳
+const int SensorFL = 9;     	//左感測器輸入腳
+int FR;    //左感測器狀態
+int FL;    //右感測器狀態
+
+float distance = 0;     // 距离
+float rdistance = 0;
+float ldistance = 0;
+float distance_0 = 0;
+float d_error = 0;
+float d_error0 = 0;
+float P = 1.5;
+float I = 0;
+float D = 1.0;
+float distance_s = 0;
+int motorspeed = 0;
+unsigned long  pwm_count;
+unsigned long  pwm_count0;
+unsigned long  pwm_count1;
+unsigned long  num;
+unsigned long time0=0;
+unsigned long time1=0;
+unsigned long delta_time=0;
+
+LiquidCrystal_I2C lcd(0x27,16,2);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+int servopin=10;//定义数字接口10 连接伺服舵机信号线
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);     // 初始化串口
+  lcd.init();             // initialize the lcd Print a message to the LCD.
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0,0);
+  
+  pinMode(Right_digital,OUTPUT); //初始化电机驱动IO为输出方式		
+  pinMode(Left_digital,OUTPUT); 		
+  pinMode(Right_analog,OUTPUT); 		
+  pinMode(Left_analog,OUTPUT); 		
+ 
+  pinMode(SensorFR,INPUT_PULLUP); //定义红外传感器接口为输入接口		
+  pinMode(SensorFL,INPUT_PULLUP); 		
+
+  pinMode(Ultrasonic_Echo, INPUT);    // 定义超声波输入脚位
+  pinMode(Ultrasonic_Trig, OUTPUT);  // 定义超声波输出脚位
+  
+  pinMode(servopin,OUTPUT);//设定舵机接口为输出接口   
+  
+  myservo.attach(servopin);
+  myservo.write(94);
+  delay(200);
+  FR=digitalRead(SensorFR);
+  FL=digitalRead(SensorFL);
+}
+void front_distance() //测量前方距离
+{ 
+  myservo.write(94);
+  delay(500);
+  digitalWrite(Ultrasonic_Trig, LOW);   
+  delayMicroseconds(2);
+  digitalWrite(Ultrasonic_Trig, HIGH); 
+  delayMicroseconds(10);
+  digitalWrite(Ultrasonic_Trig, LOW);   
+  float timee = pulseIn(Ultrasonic_Echo, HIGH); 
+  distance = timee*1.7/100;
+  if(distance>400)
+  {
+    distance=400;
+  }
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(distance);
+}
+void r_distance() //测量右侧距离
+{
+  myservo.write(5);
+  delay(500);
+  digitalWrite(Ultrasonic_Trig, LOW);   
+  delayMicroseconds(2);
+  digitalWrite(Ultrasonic_Trig, HIGH); 
+  delayMicroseconds(10);
+  digitalWrite(Ultrasonic_Trig, LOW);   
+  float time1 = pulseIn(Ultrasonic_Echo, HIGH); 
+  rdistance = time1*1.7/100;
+  myservo.write(94);
+  delay(500);
+  if(rdistance>400)
+  {
+    rdistance=400;
+  }
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("rdistance");
+  lcd.setCursor(0,1);
+  lcd.print(rdistance);
+}
+void l_distance() //测量左侧距离
+{
+  myservo.write(180);
+  delay(500);
+  digitalWrite(Ultrasonic_Trig, LOW);   
+  delayMicroseconds(2);
+  digitalWrite(Ultrasonic_Trig, HIGH); 
+  delayMicroseconds(10);
+  digitalWrite(Ultrasonic_Trig, LOW);   
+  float time2 = pulseIn(Ultrasonic_Echo, HIGH); 
+  ldistance = time2*1.7/100;
+  myservo.write(94);
+  delay(500);
+  if(ldistance>400)
+  {
+    ldistance=400;
+  }
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("ldistance");
+  lcd.setCursor(0,1);
+  lcd.print(ldistance);
+}
+void forward(int f)
+{   //前进
+  digitalWrite(Right_digital,HIGH);
+  digitalWrite(Left_digital,HIGH);
+  analogWrite(Right_analog,f);
+  analogWrite(Left_analog,f);
+}
+void backward(int b)
+{   //后退
+  digitalWrite(Right_digital,LOW);
+  digitalWrite(Left_digital,LOW);
+  analogWrite(Right_analog,100);
+  analogWrite(Left_analog,100);
+  delay(b * 10);
+}
+void brake(int br)
+{   //停车
+  digitalWrite(Right_digital,HIGH);
+  digitalWrite(Left_digital,HIGH);
+  analogWrite(Right_analog,0);
+  analogWrite(Left_analog,0);
+  delay(br * 10);
+}
+void turn_right(int r)
+{   //右转
+  digitalWrite(Right_digital,HIGH);
+  digitalWrite(Left_digital,HIGH);
+  analogWrite(Right_analog,0);
+  analogWrite(Left_analog,150);
+  delay(r * 100);
+}
+void turn_left(int c) //左转
+{
+  digitalWrite(Right_digital,HIGH);
+  digitalWrite(Left_digital,HIGH);
+  analogWrite(Right_analog,150);
+  analogWrite(Left_analog,0);
+  delay(c * 100);
+}
+
+void cartspeed()
+{    //速度控制
+  float d_distance,d_error;
+  d_error=distance-20;
+  d_distance = d_error-d_error0;
+  if(distance<80)
+  {
+    P=1.0;
+    I=0.18;
+    D=1.2;
+  }
+  else
+  {
+    P=1.3;
+    I=0;  
+    D=0;    
+  }
+  distance_s = d_error + distance_s;
+  motorspeed = P*d_error + I*distance_s + D*d_distance;
+  d_error0 = d_error;
+  if(motorspeed>200)
+  {
+    motorspeed=200;
+  }
+  else if(motorspeed<-200)
+  {
+    motorspeed=-200;
+  }
+}
+
+void directionn()
+{
+  r_distance();
+  l_distance();
+  distance_s=0;
+  if(rdistance>=ldistance)
+  {
+    backward(60);
+    turn_right(8);
+    brake(2);
+  }
+  else
+  {
+    backward(60);
+    turn_left(8);
+    brake(2);
+  }
+}
+
+void loop() 
+{
+  // put your main code here, to run repeatedly:
+  front_distance();
+  FR = digitalRead(SensorFR);
+  FL = digitalRead(SensorFL);
+  if((FR==LOW)||(FL==LOW)||(distance < 25)){
+    brake(1);
+    directionn();
+    distance_s=0;
+  }
+  else
+  {
+    cartspeed();
+    if(motorspeed>0)
+    {
+      forward(motorspeed);
+    }
+    else
+    {
+       brake(1);
+    }
+  }
+}
